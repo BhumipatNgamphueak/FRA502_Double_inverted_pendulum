@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    
+    <!-- Constants -->
+    <xacro:property name="PI" value="3.14159265359"/>
+    
+    <!-- Joint positions from original URDF -->
+    <xacro:property name="revolute_joint_x" value="0"/>
+    <xacro:property name="revolute_joint_y" value="0"/>
+    <xacro:property name="revolute_joint_z" value="0.2"/>
+    
+    <xacro:property name="pendulum1_joint_x" value="-0.107"/>
+    <xacro:property name="pendulum1_joint_y" value="-0.0002"/>
+    <xacro:property name="pendulum1_joint_z" value="0.023198"/>
+    
+    <xacro:property name="pendulum2_joint_x" value="0"/>
+    <xacro:property name="pendulum2_joint_y" value="-0.1432"/>
+    <xacro:property name="pendulum2_joint_z" value="0.0095"/>
+    
+    <!-- Masses from original URDF -->
+    <xacro:property name="mass_base" value="0.951310569253784"/>
+    <xacro:property name="mass_revolute" value="0.216240646404497"/>
+    <xacro:property name="mass_pendulum1" value="0.0997302210483473"/>
+    <xacro:property name="mass_pendulum2" value="0.00680601326910171"/>
+    
+    <!-- Joint limits - converted from continuous to revolute -->
+    <xacro:property name="joint_effort" value="100"/>
+    <xacro:property name="joint_velocity" value="10"/>
+    <xacro:property name="joint_lower_limit" value="${-PI}"/>
+    <xacro:property name="joint_upper_limit" value="${PI}"/>
+    
+    <!-- Joint dynamics - Revolute Joint -->
+    <xacro:property name="revolute_joint_damping" value="0.1"/>
+    <xacro:property name="revolute_joint_friction" value="0.05"/>
+    
+    <!-- Joint dynamics - First Pendulum -->
+    <xacro:property name="first_pendulum_damping" value="0.01"/>
+    <xacro:property name="first_pendulum_friction" value="0.001"/>
+    
+    <!-- Joint dynamics - Second Pendulum -->
+    <xacro:property name="second_pendulum_damping" value="0.01"/>
+    <xacro:property name="second_pendulum_friction" value="0.001"/>
+    
+</robot>

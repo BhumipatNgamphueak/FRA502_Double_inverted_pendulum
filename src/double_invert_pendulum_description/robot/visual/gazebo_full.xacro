@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="invert_pendulum">
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+
+    <!-- Revolute joint control -->
+    <joint name="revolute_joint">
+      <command_interface name="effort">
+        <param name="min">-100</param>
+        <param name="max">100</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- First pendulum joint control -->
+    <joint name="first_pendulum_joint">
+      <command_interface name="effort">
+        <param name="min">-100</param>
+        <param name="max">100</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Second pendulum joint control -->
+    <joint name="second_pendulum_joint">
+      <command_interface name="effort">
+        <param name="min">-100</param>
+        <param name="max">100</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find double_invert_pendulum_simulation)/config/controller_full.yaml</parameters>
+    </plugin>
+
+    <!-- Sensor Manager (for IMU, Lidar, etc.) -->
+    <plugin filename="libignition-gazebo-sensors-system.so"
+            name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+  </gazebo>
+
+  <!-- Optional: IMU sensor on base_link -->
+  <!-- <gazebo reference="base_link">
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>100.0</update_rate>
+      <visualize>true</visualize>
+      <topic>/imu/data</topic>
+      <gz_frame_id>base_link</gz_frame_id>
+      <plugin filename="libignition-gazebo-imu-system.so"
+              name="ignition::gazebo::systems::Imu"/>
+      <pose>0 0 0 0 0 0</pose>
+    </sensor>
+  </gazebo> -->
+
+</robot>

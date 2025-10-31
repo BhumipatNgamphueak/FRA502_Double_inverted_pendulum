@@ -12,7 +12,7 @@ See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with this program. 
 If not, see <https://www.gnu.org/licenses/>.
 
-created by Thanacha Choopojcharoen at CoXsys Robotics (2022)
+Adapted for double_inverted_pendulum_description package
 """
 
 from ament_index_python.packages import get_package_share_directory
@@ -29,7 +29,7 @@ def generate_launch_description():
     # Get use_sim_time parameter
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     
-    pkg = get_package_share_directory('hexapod_description')
+    pkg = get_package_share_directory('double_invert_pendulum_description')
     rviz_path = os.path.join(pkg,'config','display.rviz')
     
     rviz = Node(
@@ -41,7 +41,7 @@ def generate_launch_description():
         output='screen'
     )
     
-    path_description = os.path.join(pkg,'robot','visual','hexapod.xacro')
+    path_description = os.path.join(pkg,'robot','visual','double_invert_pendulum.xacro')
     
     # Use Command with ParameterValue for proper parsing
     robot_description_content = Command(['xacro ', path_description])

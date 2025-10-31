@@ -14,7 +14,13 @@ effort_controller:
   ros__parameters:
     use_sim_time: true
     joints:
-      - rail_to_slider
-      - base_joint
-      - hip_joint
-      - knee_joint
+      - revolute_joint
+      - first_pendulum_joint
+      - second_pendulum_joint
+    
+    command_interfaces:
+      - effort
+    
+    state_interfaces:
+      - position
+      - velocity
