@@ -1,0 +1,67 @@
+/**:
+  ros__parameters:
+    # Control frequency (Hz)
+    control_frequency: 100.0
+    
+    # System parameters (example values - adjust based on your system)
+    # Cart mass (kg)
+    m0: 1.0
+    
+    # First pendulum mass (kg)
+    m1: 0.5
+    
+    # Second pendulum mass (kg)
+    m2: 0.3
+    
+    # First pendulum length (m) - to center of mass
+    l1: 0.25
+    
+    # Second pendulum length (m) - to center of mass
+    l2: 0.20
+    
+    # First pendulum total length (m)
+    L1: 0.5
+    
+    # Second pendulum total length (m)
+    L2: 0.4
+    
+    # Full inertia tensor components for first pendulum (kg·m²)
+    # Ixx, Iyy, Izz, Ixy, Ixz, Iyz
+    I1_tensor: [0.01, 0.01, 0.001, 0.0, 0.0, 0.0]
+    
+    # Full inertia tensor components for second pendulum (kg·m²)
+    I2_tensor: [0.005, 0.005, 0.0005, 0.0, 0.0, 0.0]
+    
+    # Gravity (m/s²)
+    g: 9.81
+    
+    # LQR Q matrix (state cost) - [x, theta1, theta2, x_dot, theta1_dot, theta2_dot]
+    # Higher values = penalize deviation more
+    Q_diagonal: [10.0, 100.0, 100.0, 1.0, 1.0, 1.0]
+    
+    # LQR R matrix (control cost) - [F] (single actuator)
+    # Higher values = penalize control effort more
+    R_diagonal: [1.0]
+    
+    # Maximum control effort limits (N)
+    max_force: 50.0
+    
+    # Enable gravity compensation
+    enable_gravity_compensation: true
+    
+    # Enable control effort saturation
+    enable_saturation: true
+    
+    # Joint names (must match URDF)
+    joint_names:
+      - "revolute_joint"
+      - "first_pendulum_joint"
+      - "second_pendulum_joint"
+    
+    # Topic names
+    joint_states_topic: "/joint_states"
+    effort_command_topic: "/effort_controller/commands"
+    
+    # Debug output
+    publish_debug_info: true
+    debug_topic: "/lqr_debug"
