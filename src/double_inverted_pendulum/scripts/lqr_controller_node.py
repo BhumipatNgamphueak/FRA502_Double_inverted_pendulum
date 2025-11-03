@@ -1,151 +1,167 @@
 #!/usr/bin/env python3
+"""
+IMPROVED Swing-Up and LQR Stabilization Controller
+FIXES: Zero velocity startup, better energy pumping
+
+KEY IMPROVEMENTS:
+1. Initial kick to start motion from rest
+2. Modified control law that works at zero velocity
+3. Better energy calculation using actual URDF parameters
+4. Automatic mode switching with hysteresis
+"""
 
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, String
 from geometry_msgs.msg import Vector3Stamped
-import scipy.linalg
 
 
-class LQRControllerNode(Node):
+class ImprovedSwingUpLQR(Node):
     """
-    LQR Controller for Underactuated Double Inverted Pendulum
-    Single actuator: horizontal force on cart (revolute_joint)
-    Passive joints: first_pendulum_joint, second_pendulum_joint
-    
-    Inputs:
-        - /joint_states (sensor_msgs/JointState): Joint positions and velocities
-        
-    Outputs:
-        - /effort_controller/commands (std_msgs/Float64MultiArray): Control effort [F, 0, 0]
-        - /lqr_debug (geometry_msgs/Vector3Stamped): Debug information (optional)
-    
-    Frequency: 100 Hz (configurable)
+    Improved two-phase controller with robust swing-up
     """
     
     def __init__(self):
-        super().__init__('lqr_controller_node')
+        super().__init__('improved_swingup_lqr')
         
         # Declare and get parameters
         self._declare_parameters()
         self._get_parameters()
         
         # Initialize state
-        self.current_state = np.zeros(6)  # [x, theta1, theta2, x_dot, theta1_dot, theta2_dot]
+        self.current_state = np.zeros(6)  # [θ, α, β, θ̇, α̇, β̇]
         self.state_received = False
         
-        # Compute LQR gain matrix
-        self.K = self._compute_lqr_gain()
-        self.get_logger().info(f'LQR Gain Matrix K computed with shape: {self.K.shape}')
+        # Controller state
+        self.controller_mode = 'SWING_UP'
+        self.stabilization_counter = 0
+        self.stabilization_samples = int(self.stabilization_time * self.control_frequency)
+        
+        # Initial kick state
+        self.kick_counter = 0
+        self.kick_duration = int(0.2 * self.control_frequency)  # 0.2 second kick
+        self.kick_applied = False
+        
+        # LQR Gain Matrix
+        self.K = np.array([
+            self.K_theta, self.K_alpha, self.K_beta,
+            self.K_theta_dot, self.K_alpha_dot, self.K_beta_dot
+        ])
+        
+        self._log_controller_config()
         
         # Create subscribers
         self.joint_state_sub = self.create_subscription(
-            JointState,
-            self.joint_states_topic,
-            self.joint_state_callback,
-            10
+            JointState, self.joint_states_topic, self.joint_state_callback, 10
         )
         
         # Create publishers
         self.effort_pub = self.create_publisher(
-            Float64MultiArray,
-            self.effort_command_topic,
-            10
+            Float64MultiArray, self.effort_command_topic, 10
         )
+        self.mode_pub = self.create_publisher(String, '/controller_mode', 10)
         
         if self.publish_debug_info:
             self.debug_pub = self.create_publisher(
-                Vector3Stamped,
-                self.debug_topic,
-                10
+                Vector3Stamped, self.debug_topic, 10
             )
         
-        # Create timer for control loop
+        # Create timer
         self.control_period = 1.0 / self.control_frequency
-        self.control_timer = self.create_timer(
-            self.control_period,
-            self.control_loop
-        )
+        self.control_timer = self.create_timer(self.control_period, self.control_loop)
         
-        self.get_logger().info(f'LQR Controller initialized at {self.control_frequency} Hz')
-        self.get_logger().info(f'Underactuated system: Single actuator (cart force only)')
-        self.get_logger().info(f'Control saturation: {self.enable_saturation}')
+        self.get_logger().info('='*70)
+        self.get_logger().info('IMPROVED SWING-UP + LQR CONTROLLER READY')
+        self.get_logger().info('='*70)
+        self.get_logger().info('Starting with INITIAL KICK to overcome friction...')
+        self.get_logger().info('='*70)
     
     def _declare_parameters(self):
-        """Declare all ROS parameters"""
-        # Control parameters
+        """Declare all parameters"""
+        # Control
         self.declare_parameter('control_frequency', 100.0)
         
-        # Physical parameters
-        self.declare_parameter('m0', 1.0)
-        self.declare_parameter('m1', 0.5)
-        self.declare_parameter('m2', 0.3)
-        self.declare_parameter('l1', 0.25)
-        self.declare_parameter('l2', 0.20)
-        self.declare_parameter('L1', 0.5)
-        self.declare_parameter('L2', 0.4)
-        self.declare_parameter('I1_tensor', [0.01, 0.01, 0.001, 0.0, 0.0, 0.0])
-        self.declare_parameter('I2_tensor', [0.005, 0.005, 0.0005, 0.0, 0.0, 0.0])
+        # System parameters (FROM YOUR ACTUAL URDF!)
+        self.declare_parameter('M1', 0.0997302210483473)  # URDF: first_pendulum mass
+        self.declare_parameter('M2', 0.00680601326910171)  # URDF: second_pendulum mass
+        self.declare_parameter('l1', 0.0646186151454772)  # URDF: first_pendulum CoM
+        self.declare_parameter('l2', 0.0299439674255459)  # URDF: second_pendulum CoM
+        self.declare_parameter('L1', 0.1432)  # URDF: first_pendulum length
+        self.declare_parameter('I1_xx', 0.000174588068807012)  # URDF
+        self.declare_parameter('I2_xx', 1.8911424822564e-06)  # URDF
         self.declare_parameter('g', 9.81)
         
-        # LQR parameters
-        self.declare_parameter('Q_diagonal', [10.0, 100.0, 100.0, 1.0, 1.0, 1.0])
-        self.declare_parameter('R_diagonal', [1.0])
+        # LQR Gains
+        self.declare_parameter('K_theta', 3.162278)
+        self.declare_parameter('K_alpha', -2075.754)
+        self.declare_parameter('K_beta', -1406.793)
+        self.declare_parameter('K_theta_dot', 4.751476)
+        self.declare_parameter('K_alpha_dot', -171.095)
+        self.declare_parameter('K_beta_dot', -136.876)
+        
+        # Swing-up parameters (INCREASED for better performance)
+        self.declare_parameter('energy_gain', 50.0)  # Increased from 15
+        self.declare_parameter('damping_gain', 1.5)  # Increased damping
+        self.declare_parameter('initial_kick_torque', 3.0)  # Initial kick
+        self.declare_parameter('swing_up_max_torque', 10.0)  # Increased max
+        
+        # Switching thresholds
+        self.declare_parameter('switch_to_lqr_angle', 0.3)
+        self.declare_parameter('switch_to_lqr_velocity', 2.0)
+        self.declare_parameter('stabilization_time', 0.5)
+        self.declare_parameter('fall_angle_threshold', 0.6)
         
         # Control limits
-        self.declare_parameter('max_force', 50.0)
-        
-        # Flags
-        self.declare_parameter('enable_gravity_compensation', True)
+        self.declare_parameter('lqr_max_torque', 5.0)
         self.declare_parameter('enable_saturation', True)
         
         # Topics
-        self.declare_parameter('joint_names', ['revolute_joint', 'first_pendulum_joint', 'second_pendulum_joint'])
+        self.declare_parameter('joint_names', [
+            'revolute_joint', 'first_pendulum_joint', 'second_pendulum_joint'
+        ])
         self.declare_parameter('joint_states_topic', '/joint_states')
         self.declare_parameter('effort_command_topic', '/effort_controller/commands')
         self.declare_parameter('publish_debug_info', True)
-        self.declare_parameter('debug_topic', '/lqr_debug')
+        self.declare_parameter('debug_topic', '/swingup_lqr_debug')
     
     def _get_parameters(self):
-        """Get all ROS parameters"""
-        # Control parameters
+        """Get all parameters"""
         self.control_frequency = self.get_parameter('control_frequency').value
         
-        # Physical parameters
-        self.m0 = self.get_parameter('m0').value
-        self.m1 = self.get_parameter('m1').value
-        self.m2 = self.get_parameter('m2').value
+        # System
+        self.M1 = self.get_parameter('M1').value
+        self.M2 = self.get_parameter('M2').value
         self.l1 = self.get_parameter('l1').value
         self.l2 = self.get_parameter('l2').value
         self.L1 = self.get_parameter('L1').value
-        self.L2 = self.get_parameter('L2').value
+        self.I1_xx = self.get_parameter('I1_xx').value
+        self.I2_xx = self.get_parameter('I2_xx').value
         self.g = self.get_parameter('g').value
         
-        # Inertia tensors
-        I1_list = self.get_parameter('I1_tensor').value
-        I2_list = self.get_parameter('I2_tensor').value
+        # LQR
+        self.K_theta = self.get_parameter('K_theta').value
+        self.K_alpha = self.get_parameter('K_alpha').value
+        self.K_beta = self.get_parameter('K_beta').value
+        self.K_theta_dot = self.get_parameter('K_theta_dot').value
+        self.K_alpha_dot = self.get_parameter('K_alpha_dot').value
+        self.K_beta_dot = self.get_parameter('K_beta_dot').value
         
-        # Build full inertia tensors [Ixx, Iyy, Izz, Ixy, Ixz, Iyz]
-        self.I1 = self._build_inertia_tensor(I1_list)
-        self.I2 = self._build_inertia_tensor(I2_list)
+        # Swing-up
+        self.energy_gain = self.get_parameter('energy_gain').value
+        self.damping_gain = self.get_parameter('damping_gain').value
+        self.initial_kick_torque = self.get_parameter('initial_kick_torque').value
+        self.swing_up_max_torque = self.get_parameter('swing_up_max_torque').value
         
-        # For 2D planar motion, we primarily use Iyy component
-        self.I1_yy = self.I1[1, 1]
-        self.I2_yy = self.I2[1, 1]
+        # Switching
+        self.switch_angle = self.get_parameter('switch_to_lqr_angle').value
+        self.switch_velocity = self.get_parameter('switch_to_lqr_velocity').value
+        self.stabilization_time = self.get_parameter('stabilization_time').value
+        self.fall_angle_thresh = self.get_parameter('fall_angle_threshold').value
         
-        # LQR matrices
-        Q_diag = self.get_parameter('Q_diagonal').value
-        R_diag = self.get_parameter('R_diagonal').value
-        self.Q = np.diag(Q_diag)
-        self.R = np.array([[R_diag[0]]])  # Scalar as 1x1 matrix
-        
-        # Control limits
-        self.max_force = self.get_parameter('max_force').value
-        
-        # Flags
-        self.enable_gravity_compensation = self.get_parameter('enable_gravity_compensation').value
+        # Limits
+        self.lqr_max_torque = self.get_parameter('lqr_max_torque').value
         self.enable_saturation = self.get_parameter('enable_saturation').value
         
         # Topics
@@ -155,121 +171,21 @@ class LQRControllerNode(Node):
         self.publish_debug_info = self.get_parameter('publish_debug_info').value
         self.debug_topic = self.get_parameter('debug_topic').value
     
-    def _build_inertia_tensor(self, I_list):
-        """
-        Build 3x3 inertia tensor from list [Ixx, Iyy, Izz, Ixy, Ixz, Iyz]
-        Returns symmetric inertia matrix
-        """
-        I = np.array([
-            [I_list[0], I_list[3], I_list[4]],
-            [I_list[3], I_list[1], I_list[5]],
-            [I_list[4], I_list[5], I_list[2]]
-        ])
-        return I
-    
-    def _compute_lqr_gain(self):
-        """
-        Compute LQR gain matrix K by solving the continuous-time algebraic Riccati equation
-        
-        State: x = [x, theta1, theta2, x_dot, theta1_dot, theta2_dot]
-        Control: u = F (single actuator - cart force)
-        
-        System: x_dot = A*x + B*u (linearized around upright equilibrium)
-        Control: u = -K*x
-        
-        Returns:
-            K: 1x6 gain matrix
-        """
-        # Linearized state-space matrices around upright equilibrium
-        A, B = self._get_linearized_system()
-        
-        # Solve continuous-time algebraic Riccati equation
-        try:
-            P = scipy.linalg.solve_continuous_are(A, B, self.Q, self.R)
-            K = np.linalg.inv(self.R) @ B.T @ P
-            return K
-        except Exception as e:
-            self.get_logger().error(f'Failed to compute LQR gain: {e}')
-            # Return zero gain as fallback (1x6 for single actuator)
-            return np.zeros((1, 6))
-    
-    def _get_linearized_system(self):
-        """
-        Get linearized state-space matrices A and B around upright equilibrium
-        
-        For underactuated double inverted pendulum:
-        State: [x, theta1, theta2, x_dot, theta1_dot, theta2_dot]
-        Control: F (cart force only - single actuator)
-        
-        Returns:
-            A: 6x6 state matrix
-            B: 6x1 input matrix
-        """
-        # Simplified linearization (assumes small angles, theta1≈0, theta2≈0)
-        # This is a placeholder - you should derive exact linearization from your dynamics
-        
-        m0, m1, m2 = self.m0, self.m1, self.m2
-        l1, l2 = self.l1, self.l2
-        L1, L2 = self.L1, self.L2
-        g = self.g
-        I1, I2 = self.I1_yy, self.I2_yy
-        
-        # Total mass
-        M = m0 + m1 + m2
-        
-        # Inertia terms with parallel axis theorem
-        J1 = I1 + m1 * l1**2
-        J2 = I2 + m2 * l2**2
-        
-        # Mass matrix elements (evaluated at equilibrium)
-        # For underactuated system: M * [x_ddot, theta1_ddot, theta2_ddot]' = [F, 0, 0]' + gravity_terms
-        M11 = M
-        M12 = m1*l1 + m2*L1
-        M13 = m2*l2
-        M22 = J1 + m2*L1**2
-        M23 = m2*L1*l2
-        M33 = J2
-        
-        # Mass matrix
-        M_mat = np.array([
-            [M11, M12, M13],
-            [M12, M22, M23],
-            [M13, M23, M33]
-        ])
-        
-        # Gravity gradient matrix (linearized around upright)
-        G_mat = np.array([
-            [0, -(m1*l1 + m2*L1)*g, -m2*l2*g],
-            [0, 0, 0],
-            [0, 0, 0]
-        ])
-        
-        # Compute M^(-1)
-        M_inv = np.linalg.inv(M_mat)
-        
-        # State matrix A (6x6)
-        A = np.zeros((6, 6))
-        A[0:3, 3:6] = np.eye(3)  # Position derivatives
-        A[3:6, 0:3] = -M_inv @ G_mat  # Acceleration from gravity
-        
-        # Input matrix B (6x1) - only cart force
-        # Control input is [F, 0, 0]' in generalized coordinates
-        B = np.zeros((6, 1))
-        B[3:6, 0:1] = M_inv[:, 0:1]  # First column of M_inv (effect of cart force)
-        
-        return A, B
+    def _log_controller_config(self):
+        """Log configuration"""
+        self.get_logger().info('')
+        self.get_logger().info('='*70)
+        self.get_logger().info('CONTROLLER CONFIGURATION')
+        self.get_logger().info('='*70)
+        self.get_logger().info(f'SWING-UP: energy_gain={self.energy_gain:.1f}, ' +
+                             f'damping_gain={self.damping_gain:.1f}')
+        self.get_logger().info(f'STABILIZATION: LQR with max_torque={self.lqr_max_torque:.1f} N·m')
+        self.get_logger().info('='*70)
     
     def joint_state_callback(self, msg):
-        """
-        Callback for joint state messages
-        
-        INPUT:
-            msg (sensor_msgs/JointState): Joint positions and velocities
-        """
+        """Process joint states"""
         try:
-            # Extract states in correct order based on joint names
             state = np.zeros(6)
-            
             for i, joint_name in enumerate(self.joint_names):
                 if joint_name in msg.name:
                     idx = msg.name.index(joint_name)
@@ -278,100 +194,216 @@ class LQRControllerNode(Node):
             
             self.current_state = state
             self.state_received = True
-            
         except Exception as e:
-            self.get_logger().error(f'Error in joint_state_callback: {e}')
+            self.get_logger().error(f'joint_state_callback error: {e}')
+    
+    # ========================================================================
+    # ENERGY CALCULATIONS
+    # ========================================================================
+    
+    def _compute_energy(self, state):
+        """Compute total system energy"""
+        θ, α, β, θ_dot, α_dot, β_dot = state
+        
+        # Kinetic energy
+        KE_1 = 0.5 * self.I1_xx * α_dot**2
+        KE_2 = 0.5 * self.I2_xx * β_dot**2
+        v1 = self.L1 * θ_dot
+        KE_trans = 0.5 * (self.M1 + self.M2) * v1**2
+        KE = KE_1 + KE_2 + KE_trans
+        
+        # Potential energy (reference: hanging down = 0)
+        h1 = self.l1 * (1 + np.cos(α))
+        h2 = self.L1 * (1 + np.cos(α)) + self.l2 * (1 + np.cos(α + β))
+        PE = self.M1 * self.g * h1 + self.M2 * self.g * h2
+        
+        return KE + PE
+    
+    def _compute_desired_energy(self):
+        """Energy at upright position"""
+        h1_up = 2 * self.l1
+        h2_up = 2 * self.L1 + 2 * self.l2
+        return self.M1 * self.g * h1_up + self.M2 * self.g * h2_up
+    
+    # ========================================================================
+    # IMPROVED SWING-UP CONTROL
+    # ========================================================================
+    
+    def swing_up_control(self, state):
+        """
+        IMPROVED swing-up control with:
+        1. Initial kick for zero-velocity startup
+        2. Modified control law
+        3. Better energy pumping
+        """
+        θ, α, β, θ_dot, α_dot, β_dot = state
+        
+        # PHASE 1: Initial kick to overcome static friction
+        if not self.kick_applied:
+            if self.kick_counter < self.kick_duration:
+                self.kick_counter += 1
+                return self.initial_kick_torque  # Constant kick
+            else:
+                self.kick_applied = True
+                self.get_logger().info('Initial kick complete. Starting energy pumping...')
+        
+        # PHASE 2: Energy-based control
+        E_current = self._compute_energy(state)
+        E_desired = self._compute_desired_energy()
+        ΔE = E_desired - E_current
+        
+        # IMPROVED control law (works even at zero velocity!)
+        # Use cos(α) directly as control direction when velocity is low
+        if abs(θ_dot) < 0.1:
+            # Low velocity: use potential energy gradient
+            control_signal = -np.sin(α) * np.cos(α)  # Pumps energy efficiently
+        else:
+            # Normal velocity: standard energy pumping
+            control_signal = np.sign(θ_dot * np.cos(α))
+        
+        u_energy = self.energy_gain * ΔE * control_signal
+        
+        # Damping near upright
+        dist_from_up = (abs(np.arctan2(np.sin(α - np.pi), np.cos(α - np.pi))) +
+                       abs(np.arctan2(np.sin(β - np.pi), np.cos(β - np.pi))))
+        
+        proximity_weight = np.exp(-5 * dist_from_up)
+        u_damping = -self.damping_gain * proximity_weight * θ_dot
+        
+        u = u_energy + u_damping
+        
+        return u
+    
+    # ========================================================================
+    # LQR CONTROL
+    # ========================================================================
+    
+    def lqr_control(self, state):
+        """LQR stabilization around upright"""
+        θ, α, β, θ_dot, α_dot, β_dot = state
+        
+        # Error from upright
+        α_error = np.arctan2(np.sin(α - np.pi), np.cos(α - np.pi))
+        β_error = np.arctan2(np.sin(β - np.pi), np.cos(β - np.pi))
+        
+        x_error = np.array([θ, α_error, β_error, θ_dot, α_dot, β_dot])
+        u = -self.K @ x_error
+        
+        return float(u)
+    
+    # ========================================================================
+    # MODE SWITCHING
+    # ========================================================================
+    
+    def check_switch_to_lqr(self, state):
+        """Check if ready for LQR"""
+        θ, α, β, θ_dot, α_dot, β_dot = state
+        
+        α_dist = abs(np.arctan2(np.sin(α - np.pi), np.cos(α - np.pi)))
+        β_dist = abs(np.arctan2(np.sin(β - np.pi), np.cos(β - np.pi)))
+        
+        angle_ok = (α_dist < self.switch_angle and β_dist < self.switch_angle)
+        velocity_ok = (abs(α_dot) < self.switch_velocity and abs(β_dot) < self.switch_velocity)
+        
+        return angle_ok and velocity_ok
+    
+    def check_switch_to_swingup(self, state):
+        """Check if fallen"""
+        θ, α, β, θ_dot, α_dot, β_dot = state
+        
+        α_dist = abs(np.arctan2(np.sin(α - np.pi), np.cos(α - np.pi)))
+        β_dist = abs(np.arctan2(np.sin(β - np.pi), np.cos(β - np.pi)))
+        
+        return (α_dist > self.fall_angle_thresh or β_dist > self.fall_angle_thresh)
+    
+    # ========================================================================
+    # MAIN CONTROL LOOP
+    # ========================================================================
     
     def control_loop(self):
-        """
-        Main control loop executed at control_frequency Hz
-        
-        OUTPUT:
-            Publishes effort commands to /effort_controller/commands
-            Format: [F, 0, 0] where F is cart force, other joints are passive
-        """
+        """Main control loop"""
         if not self.state_received:
-            self.get_logger().warn('No joint states received yet', throttle_duration_sec=2.0)
+            self.get_logger().warn('Waiting for joint states...', throttle_duration_sec=2.0)
             return
         
         try:
-            # Extract state
             x = self.current_state
             
-            # LQR control law: u = -K*x (scalar output)
-            u_lqr = -self.K @ x  # Results in (1,) array
-            u_lqr_scalar = float(u_lqr[0])
+            # Mode switching
+            if self.controller_mode == 'SWING_UP':
+                if self.check_switch_to_lqr(x):
+                    self.stabilization_counter += 1
+                    if self.stabilization_counter >= self.stabilization_samples:
+                        self.controller_mode = 'STABILIZE'
+                        self.stabilization_counter = 0
+                        self.get_logger().info('='*70)
+                        self.get_logger().info('✓ SWITCHING TO LQR STABILIZATION!')
+                        self.get_logger().info('='*70)
+                else:
+                    self.stabilization_counter = 0
+                
+                tau = self.swing_up_control(x)
+                max_torque = self.swing_up_max_torque
+                
+            else:  # STABILIZE
+                if self.check_switch_to_swingup(x):
+                    self.controller_mode = 'SWING_UP'
+                    self.kick_applied = False  # Reset for re-kick
+                    self.kick_counter = 0
+                    self.get_logger().warn('='*70)
+                    self.get_logger().warn('⚠ FALLEN! Returning to SWING-UP')
+                    self.get_logger().warn('='*70)
+                    tau = self.swing_up_control(x)
+                    max_torque = self.swing_up_max_torque
+                else:
+                    tau = self.lqr_control(x)
+                    max_torque = self.lqr_max_torque
             
-            # Note: Gravity compensation not applicable for underactuated system
-            # Cannot directly apply torques to passive pendulum joints
-            # The controller must balance the system through cart motion alone
-            u_total_scalar = u_lqr_scalar
-            
-            # Apply saturation limits
+            # Saturation
             if self.enable_saturation:
-                u_total_scalar = np.clip(u_total_scalar, -self.max_force, self.max_force)
+                tau = np.clip(tau, -max_torque, max_torque)
             
-            # Publish control command [F, 0, 0] - only cart is actuated
-            self._publish_effort_command(u_total_scalar)
+            # Publish
+            self._publish_effort(tau)
+            self._publish_mode()
             
-            # Publish debug info
             if self.publish_debug_info:
-                self._publish_debug_info(x, u_lqr_scalar, u_total_scalar)
+                self._publish_debug(x, tau)
                 
         except Exception as e:
-            self.get_logger().error(f'Error in control_loop: {e}')
+            self.get_logger().error(f'Control loop error: {e}')
     
-    # Note: Gravity compensation removed
-    # For underactuated systems, we cannot directly apply torques to passive joints
-    # The LQR controller must stabilize through cart motion alone
-    
-    def _publish_effort_command(self, F):
-        """
-        Publish effort command message for single actuator system
-        
-        Args:
-            F: Cart force (scalar)
-        
-        OUTPUT:
-            Float64MultiArray on /effort_controller/commands: [F, 0, 0]
-            (Cart force, passive joint 1, passive joint 2)
-        """
+    def _publish_effort(self, tau):
+        """Publish effort command"""
         msg = Float64MultiArray()
-        msg.data = [float(F), 0.0, 0.0]  # Only cart is actuated
+        msg.data = [float(tau), 0.0, 0.0]
         self.effort_pub.publish(msg)
     
-    def _publish_debug_info(self, state, u_lqr, u_total):
-        """
-        Publish debug information for single actuator system
-        
-        Args:
-            state: State vector [x, theta1, theta2, x_dot, theta1_dot, theta2_dot]
-            u_lqr: LQR control (scalar)
-            u_total: Total control after saturation (scalar)
-        
-        OUTPUT:
-            Vector3Stamped on /lqr_debug
-            x: Cart force
-            y: theta1 angle
-            z: theta2 angle
-        """
+    def _publish_mode(self):
+        """Publish mode"""
+        msg = String()
+        msg.data = self.controller_mode
+        self.mode_pub.publish(msg)
+    
+    def _publish_debug(self, state, tau):
+        """Publish debug"""
         msg = Vector3Stamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'lqr_debug'
-        msg.vector.x = float(u_total)  # Cart force
-        msg.vector.y = float(state[1])  # theta1
-        msg.vector.z = float(state[2])  # theta2
+        msg.header.frame_id = 'swingup_lqr_debug'
+        msg.vector.x = float(tau)
+        msg.vector.y = float(state[1])  # α
+        msg.vector.z = float(state[2])  # β
         self.debug_pub.publish(msg)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = LQRControllerNode()
+    node = ImprovedSwingUpLQR()
     
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info('Shutting down...')
     finally:
         node.destroy_node()
         rclpy.shutdown()

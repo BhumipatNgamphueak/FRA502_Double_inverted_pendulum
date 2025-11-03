@@ -1,67 +1,134 @@
 /**:
   ros__parameters:
-    # Control frequency (Hz)
-    control_frequency: 100.0
+    # ============================================================
+    # IMPROVED SWING-UP + LQR STABILIZATION CONTROLLER
+    # ============================================================
     
-    # System parameters (example values - adjust based on your system)
-    # Cart mass (kg)
-    m0: 1.0
+    control_frequency: 100.0  # Hz
     
-    # First pendulum mass (kg)
-    m1: 0.5
+    # ============================================================
+    # SYSTEM PARAMETERS (From YOUR URDF)
+    # ============================================================
+    M1: 0.0997302210483473      # First pendulum mass (kg)
+    M2: 0.00680601326910171     # Second pendulum mass (kg)
+    l1: 0.0646186151454772      # First pendulum CoM (m)
+    l2: 0.0299439674255459      # Second pendulum CoM (m)
+    L1: 0.1432                  # First pendulum length (m)
+    I1_xx: 0.000174588068807012 # First pendulum inertia (kg·m²)
+    I2_xx: 1.8911424822564e-06  # Second pendulum inertia (kg·m²)
+    g: 9.81                     # Gravity (m/s²)
     
-    # Second pendulum mass (kg)
-    m2: 0.3
+    # ============================================================
+    # LQR GAINS (Stabilization Phase)
+    # ============================================================
+    K_theta: 3.162278
+    K_alpha: -2075.754304
+    K_beta: -1406.792726
+    K_theta_dot: 4.751476
+    K_alpha_dot: -171.094903
+    K_beta_dot: -136.875664
     
-    # First pendulum length (m) - to center of mass
-    l1: 0.25
+    # ============================================================
+    # SWING-UP PARAMETERS (TUNED FOR ROBUST OPERATION)
+    # ============================================================
     
-    # Second pendulum length (m) - to center of mass
-    l2: 0.20
+    # Energy pumping gain (INCREASED for faster swing-up)
+    # - Higher = faster but more aggressive
+    # - Start: 50.0, tune if needed
+    energy_gain: 200.0
     
-    # First pendulum total length (m)
-    L1: 0.5
+    # Damping gain when approaching upright
+    # - Prevents overshooting
+    # - Higher = more damping
+    damping_gain: 1.0
     
-    # Second pendulum total length (m)
-    L2: 0.4
+    # Initial kick torque to overcome static friction
+    # - Applied for 0.2 seconds at startup
+    # - Helps when arm velocity is zero
+    initial_kick_torque: 50.0  # N·m
     
-    # Full inertia tensor components for first pendulum (kg·m²)
-    # Ixx, Iyy, Izz, Ixy, Ixz, Iyz
-    I1_tensor: [0.01, 0.01, 0.001, 0.0, 0.0, 0.0]
+    # Maximum torque during swing-up
+    # - Higher allows faster swing-up
+    # - Check motor limits!
+    swing_up_max_torque: 200.0  # N·m
     
-    # Full inertia tensor components for second pendulum (kg·m²)
-    I2_tensor: [0.005, 0.005, 0.0005, 0.0, 0.0, 0.0]
+    # ============================================================
+    # MODE SWITCHING THRESHOLDS
+    # ============================================================
     
-    # Gravity (m/s²)
-    g: 9.81
+    # Angle threshold to switch from swing-up to LQR (radians)
+    switch_to_lqr_angle: 0.3  # ~17° from upright
     
-    # LQR Q matrix (state cost) - [x, theta1, theta2, x_dot, theta1_dot, theta2_dot]
-    # Higher values = penalize deviation more
-    Q_diagonal: [10.0, 100.0, 100.0, 1.0, 1.0, 1.0]
+    # Velocity threshold for switching (rad/s)
+    switch_to_lqr_velocity: 2.0
     
-    # LQR R matrix (control cost) - [F] (single actuator)
-    # Higher values = penalize control effort more
-    R_diagonal: [1.0]
+    # Time to confirm stability before switching (seconds)
+    stabilization_time: 0.5
     
-    # Maximum control effort limits (N)
-    max_force: 50.0
+    # Angle threshold for "fallen" detection (radians)
+    # - If exceeded, switch back to swing-up
+    fall_angle_threshold: 0.6  # ~34° from upright
     
-    # Enable gravity compensation
-    enable_gravity_compensation: true
+    # ============================================================
+    # STABILIZATION LIMITS
+    # ============================================================
+    lqr_max_torque: 5.0         # Max torque during LQR (N·m)
+    enable_saturation: true     # Enable torque limiting
     
-    # Enable control effort saturation
-    enable_saturation: true
-    
-    # Joint names (must match URDF)
+    # ============================================================
+    # ROS TOPICS
+    # ============================================================
     joint_names:
       - "revolute_joint"
       - "first_pendulum_joint"
       - "second_pendulum_joint"
     
-    # Topic names
     joint_states_topic: "/joint_states"
     effort_command_topic: "/effort_controller/commands"
     
-    # Debug output
     publish_debug_info: true
-    debug_topic: "/lqr_debug"
+    debug_topic: "/swingup_lqr_debug"
+    
+    # ============================================================
+    # TUNING GUIDE FOR SWING-UP
+    # ============================================================
+    #
+    # PROBLEM: Swing-up too slow
+    # --------------------------
+    # → Increase energy_gain (try 75.0 or 100.0)
+    # → Increase swing_up_max_torque (try 12.0 or 15.0)
+    # → Increase initial_kick_torque (try 4.0 or 5.0)
+    #
+    # PROBLEM: Too aggressive / oscillates wildly
+    # --------------------------------------------
+    # → Decrease energy_gain (try 30.0 or 25.0)
+    # → Increase damping_gain (try 2.0 or 2.5)
+    # → Decrease swing_up_max_torque (try 8.0 or 6.0)
+    #
+    # PROBLEM: Arm doesn't start moving
+    # ----------------------------------
+    # → Increase initial_kick_torque (try 5.0 or 6.0)
+    # → Check if ros2_control is active
+    # → Verify effort commands are being sent
+    #
+    # PROBLEM: Reaches upright but doesn't switch to LQR
+    # ---------------------------------------------------
+    # → Increase switch_to_lqr_angle (try 0.4 or 0.5)
+    # → Increase switch_to_lqr_velocity (try 3.0)
+    # → Decrease stabilization_time (try 0.3 or 0.2)
+    #
+    # PROBLEM: Switches to LQR too early and falls
+    # ----------------------------------------------
+    # → Decrease switch_to_lqr_angle (try 0.25 or 0.2)
+    # → Decrease switch_to_lqr_velocity (try 1.5)
+    # → Increase stabilization_time (try 0.7 or 1.0)
+    # → Increase LQR Q weights for tighter control
+    #
+    # PROBLEM: LQR can't maintain balance
+    # ------------------------------------
+    # → Check that pendulums are actually near upright
+    # → Increase LQR max_torque (try 6.0 or 7.0)
+    # → Verify LQR gains are correct
+    # → Check for measurement noise or delays
+    #
+    # ============================================================

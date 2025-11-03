@@ -10,7 +10,7 @@
     <link name="world"/>
     
     <!-- FIXED JOINT (Base stuck to ground - no cart movement) -->
-    <joint name="cart_joint" type="fixed">
+    <joint name="base" type="fixed">
         <parent link="world"/>
         <child link="base_link"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>  <!-- Base origin at ground level -->
