@@ -74,7 +74,7 @@
         <child link="first_pendulum_link"/>
         <origin xyz="${pendulum1_joint_x} ${pendulum1_joint_y} ${pendulum1_joint_z}" rpy="1.5708 0 -1.5708"/>
         <axis xyz="0 0 1"/>
-        <limit effort="${joint_effort}" velocity="${joint_velocity}" lower="${joint_lower_limit}" upper="${joint_upper_limit}"/>
+        <limit effort="100.0" velocity="100.0" lower="${joint_lower_limit}" upper="${joint_upper_limit}"/>
         <dynamics damping="${first_pendulum_damping}" friction="${first_pendulum_friction}"/>
     </joint>
 
@@ -104,7 +104,7 @@
         <child link="second_pendulum_link"/>
         <origin xyz="${pendulum2_joint_x} ${pendulum2_joint_y} ${pendulum2_joint_z}" rpy="0 0 0"/>
         <axis xyz="0 0 1"/>
-        <limit effort="${joint_effort}" velocity="${joint_velocity}" lower="${joint_lower_limit}" upper="${joint_upper_limit}"/>
+        <limit effort="100.0" velocity="100.0" lower="${joint_lower_limit}" upper="${joint_upper_limit}"/>
         <dynamics damping="${second_pendulum_damping}" friction="${second_pendulum_friction}"/>
     </joint>
 

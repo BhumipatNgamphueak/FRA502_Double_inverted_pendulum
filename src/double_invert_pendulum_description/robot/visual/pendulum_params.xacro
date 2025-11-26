@@ -69,8 +69,8 @@
     <!-- ========================================== -->
     
     <!-- Joint effort and velocity limits -->
-    <xacro:property name="joint_effort" value="7.5"/>
-    <xacro:property name="joint_velocity" value="15.0"/>
+    <xacro:property name="joint_effort" value="100.0"/>
+    <xacro:property name="joint_velocity" value= "7.5"/>
     <xacro:property name="joint_lower_limit" value="${-2*PI}"/>
     <xacro:property name="joint_upper_limit" value="${2*PI}"/>
     
@@ -80,11 +80,11 @@
     
     <!-- First Pendulum Joint Dynamics - PASSIVE -->
     <xacro:property name="first_pendulum_damping" value="${c1_paper}"/>
-    <xacro:property name="first_pendulum_friction" value="0.001"/>
+    <xacro:property name="first_pendulum_friction" value="${c1_paper}"/>
     
     <!-- Second Pendulum Joint Dynamics - PASSIVE -->
     <xacro:property name="second_pendulum_damping" value="${c2_paper}"/>
-    <xacro:property name="second_pendulum_friction" value="0.001"/>
+    <xacro:property name="second_pendulum_friction" value="${c2_paper}"/>
     
     <!-- ========================================== -->
     <!-- COLLISION GEOMETRY PARAMETERS -->
