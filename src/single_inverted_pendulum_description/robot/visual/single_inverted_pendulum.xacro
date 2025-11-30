@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
-<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="invert_pendulum_URDF">
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="single_inverted_pendulum_URDF">
 
     <xacro:include filename="inertial_macros.xacro" />
     <xacro:include filename="pendulum_params.xacro" />
     <xacro:include filename="robot_material.xacro" />
-    <xacro:include filename="gazebo_full.xacro" />
+    <xacro:include filename="gazebo_single.xacro" />
     
     <!-- WORLD LINK (Fixed to ground) -->
     <link name="world"/>
@@ -13,7 +13,7 @@
     <joint name="base" type="fixed">
         <parent link="world"/>
         <child link="base_link"/>
-        <!-- Raised by 0.5m to keep pendulums above ground when hanging down -->
+        <!-- Raised by 0.5m to keep pendulum above ground when hanging down -->
         <origin xyz="0 0 0.5" rpy="0 0 0"/>
     </joint>
     
@@ -26,7 +26,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://double_invert_pendulum_description/meshes/base_link.STL" />
+                <mesh filename="package://single_inverted_pendulum_description/meshes/base_link.STL" />
             </geometry>
             <material name="light_blue"/>
         </visual>
@@ -56,7 +56,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://double_invert_pendulum_description/meshes/revolute_Link.STL" />
+                <mesh filename="package://single_inverted_pendulum_description/meshes/revolute_Link.STL" />
             </geometry>
             <material name="brown"/>
         </visual>
@@ -68,7 +68,7 @@
         </collision>
     </link>
 
-    <!-- FIRST PENDULUM LINK -->
+    <!-- FIRST PENDULUM LINK (ONLY PENDULUM) -->
     <joint name="first_pendulum_joint" type="revolute">
         <parent link="revolute_Link"/>
         <child link="first_pendulum_link"/>
@@ -86,7 +86,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://double_invert_pendulum_description/meshes/first_pendulum_link.STL" />
+                <mesh filename="package://single_inverted_pendulum_description/meshes/first_pendulum_link.STL" />
             </geometry>
             <material name="brown"/>
         </visual>
@@ -97,35 +97,5 @@
             </geometry>
         </collision>
     </link>
-
-    <!-- SECOND PENDULUM LINK
-    <joint name="second_pendulum_joint" type="revolute">
-        <parent link="first_pendulum_link"/>
-        <child link="second_pendulum_link"/>
-        <origin xyz="${pendulum2_joint_x} ${pendulum2_joint_y} ${pendulum2_joint_z}" rpy="0 0 0"/>
-        <axis xyz="0 0 1"/>
-        <limit effort="100.0" velocity="100.0" lower="${joint_lower_limit}" upper="${joint_upper_limit}"/>
-        <dynamics damping="${second_pendulum_damping}" friction="${second_pendulum_friction}"/>
-    </joint>
-
-    <link name="second_pendulum_link">
-        <xacro:inertial_box mass="${mass_pendulum2}" x="0.015" y="0.06" z="0.015">
-            <origin xyz="-0.0000028766 -0.0299439674 0.001944771" rpy="0 0 0" />
-        </xacro:inertial_box>
-
-        <visual>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <mesh filename="package://double_invert_pendulum_description/meshes/second_pendulum_link.STL" />
-            </geometry>
-            <material name="light_blue"/>
-        </visual>
-        <collision>
-            <origin xyz="0 -0.03 0" rpy="0 0 0" />
-            <geometry>
-                <box size="0.015 0.06 0.015"/>
-            </geometry>
-        </collision>
-    </link> -->
 
 </robot>

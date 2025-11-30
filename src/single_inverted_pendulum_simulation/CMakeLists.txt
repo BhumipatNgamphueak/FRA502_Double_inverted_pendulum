@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(double_inverted_pendulum)
+project(single_inverted_pendulum_simulation)
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -27,7 +27,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
 install(PROGRAMS
-  scripts/trajectory_tracking_controller.py
+  scripts/dummy_script.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -50,7 +50,8 @@ install(DIRECTORY
   # add directories here
   config
   launch
-  trajectories 
+  rviz
+  worlds
   DESTINATION share/${PROJECT_NAME})
 
 ament_package()

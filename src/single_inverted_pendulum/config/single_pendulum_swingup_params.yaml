@@ -1,0 +1,68 @@
+/**:
+  ros__parameters:
+    # ============================================================
+    # WORKING CONTROLLER - Tuned for YOUR actual system!
+    # Based on measured values: α ≈ 6.28 (2π) when hanging
+    # Target: α = π (3.142) for upright
+    # ============================================================
+    
+    control_frequency: 100.0
+    
+    # ============================================================
+    # SYSTEM PARAMETERS
+    # ============================================================
+    
+    g: 9.81
+    M_arm: 0.22015507085087
+    l_arm: 0.157
+    M1: 0.190
+    l1: 0.0878
+    L1: 0.14
+    
+    # ============================================================
+    # LQR GAINS - VERY STRONG
+    # ============================================================
+    
+    K_theta: 0.0
+    K_alpha: -120.0        # Very strong pull to upright
+    K_theta_dot: 3.0
+    K_alpha_dot: -20.0     # Strong damping
+    
+    # ============================================================
+    # SWING-UP - VERY AGGRESSIVE
+    # ============================================================
+    
+    energy_gain: 100.0       # VERY HIGH (was 8.0, then 15.0)
+    damping_gain: 0.05      # VERY LOW (let it swing!)
+    kick_torque: 3.0        # Initial kick to START motion (critical!)
+    swing_up_max_torque: 15.0  # HIGH limit
+    
+    # ============================================================
+    # MODE SWITCHING - RELAXED
+    # ============================================================
+    
+    switch_to_lqr_angle: 0.5       # Wide capture zone
+    switch_to_lqr_velocity: 4.0    # Allow fast approach
+    stabilization_time: 0.15       # Quick switch
+    fall_angle_threshold: 0.8      # Forgiving
+    
+    # ============================================================
+    # CONTROL LIMITS
+    # ============================================================
+    
+    lqr_max_torque: 15.0
+    enable_saturation: true
+    
+    # ============================================================
+    # ROS TOPICS
+    # ============================================================
+    
+    joint_names:
+      - "revolute_joint"
+      - "first_pendulum_joint"
+    
+    joint_states_topic: "/joint_states"
+    effort_command_topic: "/effort_controller/commands"
+    
+    publish_debug_info: true
+    debug_topic: "/swingup_lqr_debug"

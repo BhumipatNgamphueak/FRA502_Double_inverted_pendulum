@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launch file for LQR Stabilization Controller
+Launch file for Single Pendulum Swing-Up Controller
 """
 
 from launch import LaunchDescription
@@ -8,24 +8,21 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
-import os
 
 
 def generate_launch_description():
-    """Generate launch description for LQR stabilization controller"""
     
-    # Get package share directory
-    # NOTE: Replace 'double_invert_pendulum_control' with your actual package name
-    pkg_share = FindPackageShare('double_inverted_pendulum')
+    # Package share directory
+    pkg_share = FindPackageShare('single_inverted_pendulum')
     
-    # Path to parameters file
+    # Config file path
     params_file = PathJoinSubstitution([
         pkg_share,
         'config',
-        'lqr_params.yaml'
+        'single_pendulum_swingup_params.yaml'
     ])
     
-    # Declare launch arguments
+    # Launch arguments
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
@@ -38,11 +35,11 @@ def generate_launch_description():
         description='Path to parameter file'
     )
     
-    # LQR Stabilization Node
-    lqr_stabilization_node = Node(
-        package='double_inverted_pendulum',
-        executable='lqr_controller_node.py',
-        name='lqr_stabilization_controller',
+    # Controller node
+    controller_node = Node(
+        package='single_inverted_pendulum',
+        executable='single_pendulum_swingup_controller.py',
+        name='swingup_controller',
         output='screen',
         parameters=[
             LaunchConfiguration('params_file'),
@@ -54,5 +51,5 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         params_file_arg,
-        lqr_stabilization_node,
+        controller_node,
     ])
